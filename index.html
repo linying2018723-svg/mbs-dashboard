@@ -128,7 +128,7 @@
     <div class="meta">口径 · <b>订单利润</b><br>可选区间 · <b id="mwindow"></b><br>更新方式 · <b>按需刷新</b></div>
   </header>
   <div class="topbar">
-    <div class="vtoggle" id="vtoggle"><button data-v="brief" class="on">📊 速览</button><button data-v="profit">💰 利润</button><button data-v="inv">📦 库存</button></div>
+    <div class="vtoggle" id="vtoggle"><button data-v="brief" class="on">📊 速览</button><button data-v="profit">💰 利润</button><button data-v="inv">📦 库存</button><button data-v="aging">📅 库龄预测</button></div>
     <div class="pwrap"><span class="seglbl">负责人</span><select id="principal"><option value="all">👤 全部</option></select></div>
   </div>
 
@@ -248,6 +248,35 @@
     <div class="tblwrap"><div class="scroll"><table class="main" style="min-width:720px"><thead><tr><th class="l">主SKU / MSKU</th><th class="l">店铺</th><th>风险</th><th>可售</th><th>在途</th><th>可售天数</th><th>货值</th><th class="l">建议</th></tr></thead><tbody id="br_invsku"></tbody></table></div></div>
     <footer>指标口径：利润/广告/退款为订单利润「按下单日」口径,取自68天日数据聚合(销量作订单量代理);库存为当前FBA快照。环比=同长上一期。币种随利润视图(USD为≈6.79估算)。数据·领星 ERP。</footer>
   </div><!--/viewBrief-->
+  <div id="viewAging" class="hide">
+    <div class="selbar" style="justify-content:flex-start">
+      <span class="seglbl" style="font-family:var(--mono);font-size:11px;color:var(--ink-3)">库龄 180天+ 预测 · 按当前销售速度推演</span>
+      <span class="rangehint" id="ag_asof"></span>
+      <span style="font-size:11px;color:var(--ink-3);margin-left:auto">货值固定 ¥ · 负责人随顶部</span>
+    </div>
+    <div class="verdictb" id="ag_verdict" style="border-left-color:var(--warn)"></div>
+    <div class="brh">未来四档 180天+ 货值预测 <span class="s">中性口径(老货按当前速度FIFO消化)</span></div>
+    <div class="kpis" id="ag_kpis"></div>
+    <div class="invcard" style="margin:4px 0 14px"><h3>180天+ 货值走势 <span style="font-weight:400;color:var(--ink-3);font-size:11px">· 实线=中性 / 虚线=保守(老货卖不动)</span></h3>
+      <svg id="ag_trend" viewBox="0 0 620 170" preserveAspectRatio="none" style="width:100%;height:170px;display:block"></svg>
+      <div class="distlegend" id="ag_trendlegend"></div>
+    </div>
+    <div class="controls">
+      <div class="chips" id="ag_filters">
+        <div class="chip on" data-f="all">全部有风险敞口</div>
+        <div class="chip" data-f="now"><span class="dot" style="background:#b5432f"></span>现已180天+</div>
+        <div class="chip" data-f="soon"><span class="dot" style="background:#C99A3A"></span>本月内跨线</div>
+      </div>
+      <div class="spacer"></div>
+      <input id="ag_search" placeholder="搜 MSKU / 品名 / ASIN"/>
+    </div>
+    <div class="tblwrap"><div class="scroll"><table class="main" style="min-width:920px">
+      <thead><tr><th class="l">MSKU</th><th>可售天</th><th>当前&gt;180</th><th>现91-180</th><th id="ag_h1"></th><th id="ag_h2"></th><th id="ag_h3"></th><th id="ag_h4"></th></tr></thead>
+      <tbody id="ag_body"></tbody>
+    </table></div></div>
+    <div class="empty hide" id="ag_empty">无 180天+ 风险敞口 SKU 👍</div>
+    <footer><b>预测方法：</b>以最新库存快照的<b>库龄分档货值</b>为基准，每档随时间自然老化(90天档内按均匀分布跨线)，并按各 SKU <b>当前销售速度(可售天数)</b>做 FIFO(老货先出)消化。<b>中性</b>=计销售消化；<b>保守</b>=老库存基本卖不动、仅自然老化流入。实际受你后续补货/促销影响。货值=FBA可售成本货值。数据源·领星 FBA。</footer>
+  </div><!--/viewAging-->
 </div>
 <div class="overlay hide" id="overlay"><div class="fpanel"><button class="close" id="closeFormula">✕</button>
   <h2>计算公式说明</h2><div style="font-size:12.5px;color:var(--ink-3)">口径：领星「订单利润」（按下单日归集）· 选定区间内按天求和后重算</div>
@@ -428,7 +457,7 @@ document.getElementById('closeFormula').addEventListener('click',()=>document.ge
 document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')document.getElementById('overlay').classList.add('hide');});
 const psel=document.getElementById('principal');
 (RAW.principals||[]).forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=(p==='-'?'未分配':p);psel.appendChild(o);});
-psel.addEventListener('change',e=>{principal=e.target.value;refreshAll();if(!document.getElementById('viewInv').classList.contains('hide'))renderInv();if(!document.getElementById('viewBrief').classList.contains('hide'))renderBrief();});
+psel.addEventListener('change',e=>{principal=e.target.value;refreshAll();if(!document.getElementById('viewInv').classList.contains('hide'))renderInv();if(!document.getElementById('viewBrief').classList.contains('hide'))renderBrief();if(!document.getElementById('viewAging').classList.contains('hide'))renderAging();});
 setInputs();refreshAll();
 
 
@@ -529,8 +558,9 @@ function switchView(v){
   document.getElementById('viewProfit').classList.toggle('hide',v!=='profit');
   document.getElementById('viewInv').classList.toggle('hide',v!=='inv');
   document.getElementById('viewBrief').classList.toggle('hide',v!=='brief');
+  document.getElementById('viewAging').classList.toggle('hide',v!=='aging');
   document.querySelectorAll('#vtoggle button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  if(v==='inv'){renderInv();renderInvTrend();}if(v==='brief')renderBrief();
+  if(v==='inv'){renderInv();renderInvTrend();}if(v==='brief')renderBrief();if(v==='aging')renderAging();
 }
 document.getElementById('vtoggle').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;switchView(b.dataset.v);});
 document.getElementById('openInvFormula').addEventListener('click',()=>document.getElementById('invOverlay').classList.remove('hide'));
@@ -608,5 +638,83 @@ function renderBrief(){
   document.getElementById('br_invsku').innerHTML=invk.slice(0,10).map(k=>`<tr style="border-bottom:1px solid var(--line-2)"><td ${tdl}><span class="mkid">${k.m}</span><div class="spunm">${k.nm||''}</div></td><td ${tdl} style="font-size:11px;color:var(--ink-3)">${k.st}</td><td ${td}>${ivbdg(k.rk)}</td><td class="num" ${td}>${k.ful.toLocaleString()}</td><td class="num" ${td}>${k.ow>0?'<span class="owtag">'+k.ow.toLocaleString()+'</span>':'0'}</td><td class="num" ${td}>${k.dos}</td><td class="num" ${td}>${cny(k.val)}</td><td ${tdl} style="font-size:11.5px;color:var(--accent-2);font-weight:600">${iadv(k)}</td></tr>`).join('')||'<tr><td colspan="8" style="padding:14px;text-align:center;color:var(--ink-3)">库存无待处理项 👍</td></tr>';
 }
 document.getElementById('brCurrencies').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...e.currentTarget.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');bcur=b.textContent;renderBrief();});
+
+/* ===== 库龄 180天+ 预测 ===== */
+let agQ='',agFilter='all';
+function agCheckpoints(asof){
+  const d0=new Date(asof+'T00:00:00');
+  const y=d0.getFullYear(),m=d0.getMonth();
+  const cand=[new Date(y,m,15)];
+  for(let o=1;o<=5;o++){cand.push(new Date(y,m+o,1));cand.push(new Date(y,m+o,15));cand.push(new Date(y,m+o+1,0));}
+  const seen=new Set(),uq=[];
+  cand.filter(dt=>dt>d0).sort((a,b)=>a-b).forEach(dt=>{const k=dt.getTime();if(!seen.has(k)){seen.add(k);uq.push(dt);}});
+  const pick=uq.slice(0,4);
+  const fmt=dt=>`${dt.getMonth()+1}-${String(dt.getDate()).padStart(2,'0')}`;
+  const lbl=dt=>{const mo=dt.getMonth()+1,day=dt.getDate(),last=new Date(dt.getFullYear(),dt.getMonth()+1,0).getDate();return day===1?mo+'月初':day===15?mo+'月中旬':day===last?mo+'月底':mo+'月'+day+'日';};
+  return pick.map(dt=>({date:dt,delta:Math.round((dt-d0)/864e5),key:fmt(dt),label:lbl(dt)}));
+}
+const clamp01=x=>Math.max(0,Math.min(1,x));
+function agedIn(k,delta){const a=k.age;return a[2]+a[3]+a[4]+a[1]*clamp01(delta/90)+a[0]*clamp01((delta-90)/90);}
+function pred180(k,delta,sell){const pool=agedIn(k,delta);if(!sell)return pool;const vel=(k.dos&&k.dos>0)?k.ful/k.dos:0;const unit=k.ful>0?k.val/k.ful:0;const sold=Math.min(k.val,vel*delta*unit);return Math.max(0,pool-sold);}
+function renderAging(){
+  document.getElementById('ag_asof').textContent='基准快照 '+INV.asof;
+  const cps=agCheckpoints(INV.asof);
+  cps.forEach((c,i)=>{const th=document.getElementById('ag_h'+(i+1));if(th)th.innerHTML=c.label+'<div style="font-weight:400;color:var(--ink-3);font-size:10px">'+c.key+'</div>';});
+  const base=INV.spus.filter(s=>principal==='all'||s.p===principal);
+  const rows=[];
+  base.forEach(s=>s.k.forEach(k=>{
+    const now180=k.age[2]+k.age[3]+k.age[4],a91=k.age[1];
+    const preds=cps.map(c=>pred180(k,c.delta,true)),predsC=cps.map(c=>pred180(k,c.delta,false));
+    if(Math.max(now180,...preds,...predsC)<100)return;
+    rows.push({m:k.m,st:k.st,a:k.a,nm:s.cn||'',dos:k.dos,ful:k.ful,now180,a91,preds,predsC});
+  }));
+  const nowTot=rows.reduce((t,r)=>t+r.now180,0);
+  const kc=(lbl,val,sub,col)=>`<div class="kpi"><div class="l">${lbl}</div><div class="v"${col?` style="color:${col}"`:''}>${im(val)}</div><div class="s" style="color:var(--ink-3)">${sub||''}</div></div>`;
+  let kh=kc('当前 180天+',nowTot,'基准快照');
+  cps.forEach((c,i)=>{const cen=rows.reduce((t,r)=>t+r.preds[i],0),con=rows.reduce((t,r)=>t+r.predsC[i],0),d=cen-nowTot;kh+=kc(c.label+'（'+c.key+'）',cen,'保守 '+im(con)+' · '+(d>=0?'▲':'▼')+im(Math.abs(d)),d>nowTot*0.6?'var(--crit)':'var(--warn)');});
+  document.getElementById('ag_kpis').innerHTML=kh;
+  const eC=rows.reduce((t,r)=>t+r.preds[cps.length-1],0),eK=rows.reduce((t,r)=>t+r.predsC[cps.length-1],0),a91t=rows.reduce((t,r)=>t+r.a91,0);
+  document.getElementById('ag_verdict').innerHTML=`<div class="big">⚠ 到 ${cps[cps.length-1].label}，180天+ 货值预计 ${im(eC)} ~ ${im(eK)}</div><p>较当前 ${im(nowTot)} 约 +${nowTot?Math.round((eC/nowTot-1)*100):0}%（中性）~ +${nowTot?Math.round((eK/nowTot-1)*100):0}%（保守）。主要来自 91-180天档 ${im(a91t)} 陆续跨线。趁未触发长期仓储附加费前处理最划算。</p>`;
+  agTrend(nowTot,cps,rows);
+  agTable(cps,rows);
+}
+function agTrend(nowTot,cps,rows){
+  const cen=[nowTot,...cps.map((c,i)=>rows.reduce((t,r)=>t+r.preds[i],0))];
+  const con=[nowTot,...cps.map((c,i)=>rows.reduce((t,r)=>t+r.predsC[i],0))];
+  const labels=['现在',...cps.map(c=>c.label)];
+  const W=620,H=170,pl=44,pr=12,pt=16,pb=26,maxV=Math.max(1,...cen,...con),n=cen.length;
+  const x=i=>pl+(i/(n-1))*(W-pl-pr),y=v=>H-pb-(v/maxV)*(H-pt-pb),path=arr=>arr.map((v,i)=>x(i)+','+y(v)).join(' ');
+  let svg='';
+  for(let g=0;g<=2;g++){const v=maxV*g/2,yy=y(v);svg+=`<line x1="${pl}" y1="${yy}" x2="${W-pr}" y2="${yy}" stroke="var(--line-2)" stroke-width="1"/><text x="4" y="${yy+3}" font-size="9" fill="var(--ink-3)">¥${(v/10000).toFixed(0)}万</text>`;}
+  svg+=`<polyline points="${path(con)}" fill="none" stroke="#b5432f" stroke-width="1.5" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>`;
+  svg+=`<polyline points="${path(cen)}" fill="none" stroke="var(--warn)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>`;
+  cen.forEach((v,i)=>{svg+=`<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="var(--warn)"/><text x="${x(i)}" y="${y(v)-7}" font-size="9.5" fill="var(--ink-1)" text-anchor="middle" font-family="var(--mono)">${(v/10000).toFixed(1)}万</text>`;});
+  labels.forEach((l,i)=>{svg+=`<text x="${x(i)}" y="${H-8}" font-size="9.5" fill="var(--ink-3)" text-anchor="middle">${l}</text>`;});
+  document.getElementById('ag_trend').innerHTML=svg;
+  document.getElementById('ag_trendlegend').innerHTML='<span class="b"><i style="background:var(--warn)"></i>中性(计当前销售消化)</span><span class="b"><i style="background:#b5432f"></i>保守(老货基本不动)</span>';
+}
+function agTable(cps,rows){
+  let list=rows.slice();
+  if(agFilter==='now')list=list.filter(r=>r.now180>0);
+  else if(agFilter==='soon')list=list.filter(r=>r.now180<=0&&r.preds.some(v=>v>0));
+  if(agQ){const Q=agQ.toLowerCase();list=list.filter(r=>r.m.toLowerCase().includes(Q)||(r.nm||'').includes(agQ)||(r.a||'').toLowerCase().includes(Q));}
+  list.sort((a,b)=>b.preds[cps.length-1]-a.preds[cps.length-1]);
+  const body=document.getElementById('ag_body');body.innerHTML='';
+  document.getElementById('ag_empty').classList.toggle('hide',list.length>0);
+  const dash='<span style="color:var(--ink-3)">—</span>';
+  const cell=(v,hot)=>`<td class="num"${hot?' style="color:var(--crit);font-weight:600"':''}>${v>0?im(v):dash}</td>`;
+  list.forEach(r=>{
+    const tr=document.createElement('tr');
+    let cells='';cps.forEach((c,i)=>{cells+=cell(r.preds[i],r.preds[i]>r.now180&&r.preds[i]>2000);});
+    tr.innerHTML=`<td class="l"><span class="mkid">${r.m}</span><div class="spunm">${r.nm||''} · ${r.st}</div></td>
+      <td class="num">${r.dos?Math.round(r.dos):'—'}</td>
+      <td class="num"${r.now180>0?' style="color:#b5432f"':''}>${r.now180>0?im(r.now180):dash}</td>
+      <td class="num" style="color:var(--warn)">${r.a91>0?im(r.a91):dash}</td>${cells}`;
+    body.appendChild(tr);
+  });
+}
+document.getElementById('ag_filters').addEventListener('click',e=>{const c=e.target.closest('.chip');if(!c)return;document.querySelectorAll('#ag_filters .chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');agFilter=c.dataset.f;renderAging();});
+let agtmr;document.getElementById('ag_search').addEventListener('input',e=>{clearTimeout(agtmr);agtmr=setTimeout(()=>{agQ=e.target.value.trim();renderAging();},160);});
+
 switchView('brief');
 </script>
