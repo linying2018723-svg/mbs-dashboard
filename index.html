@@ -201,8 +201,8 @@
       <div class="invcard"><h3>库存风险分布（按货值）</h3><div class="distbar" id="iv_riskbar"></div><div class="distlegend" id="iv_risklegend"></div></div>
       <div class="invcard"><h3>库龄分布（按货值·可售）</h3><div class="distbar" id="iv_agebar"></div><div class="distlegend" id="iv_agelegend"></div></div>
     </div>
-    <div class="invcard" style="margin-bottom:14px"><h3>各风险库存货值趋势 <span style="font-weight:400;color:var(--ink-3);font-size:11px">· 全店快照留存 · <span id="iv_trenddates"></span></span></h3>
-      <svg id="iv_trend" viewBox="0 0 600 150" preserveAspectRatio="none" style="width:100%;height:150px;display:block"></svg>
+    <div class="invcard" style="margin-bottom:14px"><h3>各风险库存货值趋势 <span style="font-weight:400;color:var(--ink-3);font-size:11px">· 点击下方图例只看单条 · <span id="iv_trenddates"></span></span></h3>
+      <svg id="iv_trend" viewBox="0 0 880 175" preserveAspectRatio="none" style="width:100%;height:175px;display:block"></svg>
       <div class="distlegend" id="iv_trendlegend"></div>
     </div>
     <div class="controls">
@@ -470,25 +470,40 @@ const im=n=>{const a=Math.abs(n);return '¥'+(a>=10000?(n/10000).toFixed(1)+'万
 const ivbdg=k=>`<span class="bdg2 ${k}">${RL[k]}</span>`;
 function ivBase(){return INV.spus.filter(s=>(principal==='all'||s.p===principal));}
 
+let ivTrendSel=null; // null=全部；否则为某档 key，只看该档
 function renderInvTrend(){
   const T=INV.trend||[];if(!T.length){return;}
   const tiers=[['restock','#E08A2E','已备货'],['low','var(--good)','低'],['mid','#C99A3A','中'],['high','#b5432f','高'],['dead','#6b3f8c','呆滞']];
-  const maxV=Math.max(1,...T.flatMap(t=>tiers.map(([k])=>t.rv[k]||0)));
-  const W=600,H=150,pad=10;
-  const x=i=>T.length>1?pad+(i/(T.length-1))*(W-2*pad):W/2;
-  const y=v=>H-pad-(v/maxV)*(H-2*pad);
+  const shown = ivTrendSel ? tiers.filter(t=>t[0]===ivTrendSel) : tiers;
+  const single = !!ivTrendSel;
+  const maxV=Math.max(1,...T.flatMap(t=>shown.map(([k])=>t.rv[k]||0)));
+  const W=880,H=175,padL=10,padR=12,padT=24,padB=16;
+  const x=i=>T.length>1?padL+(i/(T.length-1))*(W-padL-padR):W/2;
+  const y=v=>H-padB-(v/maxV)*(H-padT-padB);
+  const wan=v=>(v/10000).toFixed(1);
   let svg='';
-  tiers.forEach(([k,c])=>{const pts=T.map((t,i)=>x(i)+','+y(t.rv[k]||0)).join(' ');svg+='<polyline points="'+pts+'" fill="none" stroke="'+c+'" stroke-width="2" vector-effect="non-scaling-stroke"/>';T.forEach((t,i)=>{svg+='<circle cx="'+x(i)+'" cy="'+y(t.rv[k]||0)+'" r="3.5" fill="'+c+'"/>';});});
+  shown.forEach(([k,c])=>{
+    const pts=T.map((t,i)=>x(i)+','+y(t.rv[k]||0)).join(' ');
+    svg+='<polyline points="'+pts+'" fill="none" stroke="'+c+'" stroke-width="2" vector-effect="non-scaling-stroke"/>';
+    T.forEach((t,i)=>{const v=t.rv[k]||0;svg+='<circle cx="'+x(i)+'" cy="'+y(v)+'" r="3.2" fill="'+c+'"/>';
+      // 数值标签：单条模式每点都标；全部模式只标最后一点
+      if(single || i===T.length-1){const anchor=i===0?'start':(i===T.length-1?'end':'middle');
+        svg+='<text x="'+x(i)+'" y="'+(y(v)-7)+'" font-size="10" fill="'+c+'" text-anchor="'+anchor+'" font-family="var(--mono)" font-weight="600">'+wan(v)+'</text>';}
+    });
+  });
   document.getElementById('iv_trend').innerHTML=svg;
   document.getElementById('iv_trenddates').textContent=T.map(t=>t.d).join(' → ');
   const last=T[T.length-1],prev=T.length>1?T[T.length-2]:null;
-  document.getElementById('iv_trendlegend').innerHTML=tiers.map(([k,c,lbl])=>{
+  const allChip='<span class="b tclk" data-tk="all" style="cursor:pointer;'+(ivTrendSel===null?'font-weight:700;color:var(--accent)':'opacity:.6')+'">◎ 全部</span>';
+  document.getElementById('iv_trendlegend').innerHTML=allChip+tiers.map(([k,c,lbl])=>{
     const cur=last.rv[k]||0,d=prev?cur-(prev.rv[k]||0):0;
     const bad=(k==='dead'||k==='mid'||k==='high');const dcol=d===0?'var(--ink-3)':((bad?d>0:d<0)?'var(--crit)':'var(--good)');
     const darr=prev&&d!==0?(d>0?'▲':'▼'):'';
-    return '<span class="b"><i style="background:'+c+'"></i>'+lbl+' ¥'+(cur/10000).toFixed(1)+'万'+(prev?' <span style="color:'+dcol+';font-family:var(--mono);font-size:10px">'+darr+(Math.abs(d)/10000).toFixed(1)+'万</span>':'')+'</span>';
+    const dim=(ivTrendSel&&ivTrendSel!==k)?'opacity:.3;':'';const on=(ivTrendSel===k)?'font-weight:700;':'';
+    return '<span class="b tclk" data-tk="'+k+'" style="cursor:pointer;'+dim+on+'"><i style="background:'+c+'"></i>'+lbl+' ¥'+(cur/10000).toFixed(1)+'万'+(prev?' <span style="color:'+dcol+';font-family:var(--mono);font-size:10px">'+darr+(Math.abs(d)/10000).toFixed(1)+'万</span>':'')+'</span>';
   }).join('');
 }
+document.getElementById('iv_trendlegend').addEventListener('click',e=>{const el=e.target.closest('.tclk');if(!el)return;const tk=el.dataset.tk;ivTrendSel=(tk==='all'||ivTrendSel===tk)?null:tk;renderInvTrend();});
 function renderInv(){
   const base=ivBase();
   const allK=[];base.forEach(s=>s.k.forEach(k=>allK.push(k)));
